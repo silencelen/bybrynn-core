@@ -20,7 +20,7 @@ document.addEventListener("DOMContentLoaded", () => {
       document.getElementById("meta-onion").setAttribute("content", entry.onion);
 
       document.getElementById("art-title").textContent = entry.title;
-      document.getElementById("art-subheading").innerHTML = `<a>${entry.subheading}</a>`;
+      document.getElementById("art-subheading").textContent = entry.subheading;
       document.getElementById("art-image").src = entry.image;
       document.getElementById("art-description").textContent = entry.description;
 

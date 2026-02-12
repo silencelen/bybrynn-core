@@ -11,15 +11,6 @@ session_set_cookie_params([
 
 session_start();
 
-file_put_contents(
-  __DIR__ . '/admin_debug.log',
-  date('c') . " SESSION ID   : " . session_id() . "\n" .
-  date('c') . " COOKIE ARRAY : " . print_r($_COOKIE, true) . "\n" .
-  date('c') . " GET          : " . print_r($_GET, true) . "\n" .
-  date('c') . " SESS         : " . print_r($_SESSION, true) . "\n\n",
-  FILE_APPEND
-);
-
 require __DIR__ . '/vendor/autoload.php';
 use League\OAuth2\Client\Provider\Exception\IdentityProviderException;
 use Stevenmaguire\OAuth2\Client\Provider\Microsoft;
@@ -72,27 +63,16 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
     try {
         $owner = $provider->getResourceOwner($token);
+        $_SESSION['authenticated_user'] = $owner->toArray()['mail'] ?? $owner->getId();
     } catch (Exception $e) {
     }
 }
 
 
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-error_reporting(E_ALL);
-
-$debugLog = __DIR__ . '/admin_debug.log';
-function logd($msg) {
-    global $debugLog;
-    file_put_contents($debugLog, date('c') . ' ' . $msg . PHP_EOL, FILE_APPEND);
-}
 function respond($msg) {
-    logd('RESPOND: ' . $msg);
     echo '<p>' . htmlspecialchars($msg) . '</p>';
     exit;
 }
-
-logd('=== Script Start ===');
 
 $entriesFile = __DIR__ . '/art/entries.json';
 $indexFile   = __DIR__ . '/art/index.php';
@@ -102,13 +82,11 @@ if (!is_dir($imagesDir)) {
     if (!mkdir($imagesDir, 0755, true)) {
         respond('Error: Cannot create images directory.');
     }
-    logd('Created images directory');
 }
 if (!file_exists($entriesFile)) {
     if (file_put_contents($entriesFile, "{}") === false) {
         respond('Error: Cannot create entries.json.');
     }
-    logd('Created entries.json');
 }
 if (!is_readable($entriesFile) || !is_writable($entriesFile)) {
     respond('Error: entries.json not readable or writable.');
@@ -116,18 +94,34 @@ if (!is_readable($entriesFile) || !is_writable($entriesFile)) {
 if (!file_exists($indexFile) || !is_writable($indexFile)) {
     respond('Error: index.php missing or not writable.');
 }
-logd('Environment validated');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (empty($_SESSION['authenticated_user'])) {
+        http_response_code(403);
+        exit('Authentication required.');
+    }
+
+    $now = time();
+    $_SESSION['submission_timestamps'] = array_filter(
+        $_SESSION['submission_timestamps'] ?? [],
+        fn($t) => $now - $t < 3600
+    );
+    if (count($_SESSION['submission_timestamps']) >= 5) {
+        http_response_code(429);
+        exit('Rate limit exceeded. Try again later.');
+    }
+    $_SESSION['submission_timestamps'][] = $now;
+
     try {
-        logd('Handling POST');
-        $title       = trim($_POST['title'] ?? '');
-        $medium      = trim($_POST['medium'] ?? '');
-        $dimensions  = trim($_POST['dimensions'] ?? '');
-        $year        = trim($_POST['year'] ?? '');
-        $description = trim($_POST['description'] ?? '');
+        $title       = htmlspecialchars(trim($_POST['title'] ?? ''), ENT_QUOTES, 'UTF-8');
+        $medium      = htmlspecialchars(trim($_POST['medium'] ?? ''), ENT_QUOTES, 'UTF-8');
+        $dimensions  = htmlspecialchars(trim($_POST['dimensions'] ?? ''), ENT_QUOTES, 'UTF-8');
+        $year        = htmlspecialchars(trim($_POST['year'] ?? ''), ENT_QUOTES, 'UTF-8');
+        $description = htmlspecialchars(trim($_POST['description'] ?? ''), ENT_QUOTES, 'UTF-8');
         $date        = $_POST['date'] ?? date('Y-m-d');
-        logd("Inputs: title='$title', medium='$medium', dimensions='$dimensions', year='$year', date='$date'");
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+            $date = date('Y-m-d');
+        }
 
         if (!$title || !$medium || !$dimensions || !$year) {
             respond('Error: Title, medium, dimensions, and year are required.');
@@ -135,7 +129,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $slug = preg_replace('/[^a-z0-9]/', '', strtolower($title));
         if (!$slug) respond('Error: Invalid title for slug.');
-        logd("Slug: $slug");
 
 
         $highresPath = '';
@@ -145,7 +138,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $highDest = "$imagesDir/$highName";
                 if (move_uploaded_file($_FILES['highres']['tmp_name'], $highDest)) {
                     $highresPath = "/art/images/$highName";
-                    logd("Highres saved: $highDest");
                 }
             }
         }
@@ -157,7 +149,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $secondaryDest = "{$imagesDir}/{$secondaryName}";
                 if (move_uploaded_file($_FILES['secondary']['tmp_name'], $secondaryDest)) {
                     $secondaryPath = "/art/images/{$secondaryName}";
-                    logd("Secondary image saved: {$secondaryDest}");
                 }
             }
         }
@@ -168,9 +159,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $jsonValid = json_last_error() === JSON_ERROR_NONE;
         if ($jsonValid) {
             $entries = $decoded;
-            logd('Loaded entries.json count=' . count($entries));
         } else {
-            logd('JSON decode error: ' . json_last_error_msg());
             $entries = null;
         }
 
@@ -192,7 +181,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $keys = array_keys($entries);
                 $prev = end($keys);
                 $entries[$prev]['next'] = $slug;
-                logd("Set next of prev=$prev to $slug");
             }
             $newEntry['prev'] = $prev;
             $entries[$slug]   = $newEntry;
@@ -203,7 +191,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (file_put_contents($entriesFile, $newJson, LOCK_EX) === false) {
                 respond('Error: Could not write entries.json.');
             }
-            logd('Updated entries.json count=' . count($entries));
         } else {
             $frag = json_encode([$slug => $newEntry], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
             $frag = trim($frag);
@@ -220,7 +207,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (file_put_contents($entriesFile, $newRaw, LOCK_EX) === false) {
                 respond('Error: Could not append to entries.json.');
             }
-            logd('Appended entry textually');
         }
 
         $html = file_get_contents($indexFile);
@@ -242,7 +228,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (file_put_contents($indexFile, str_replace("\n", PHP_EOL, $newHtml)) === false) {
             respond('Error: Failed to update index.php');
         }
-        logd('Updated index.php');
 
         header('Location: /art#bottom', true, 302);
         exit;
@@ -266,7 +251,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville&display=swap" rel=stylesheet>
     <link rel=stylesheet href=/cssrepo/bootstraps/bootstrap.css>
     <link rel="stylesheet" href="/cssrepo/global_style.css">
-    <link rel=stylesheet href=/cssrepo/ind/about_style.css>    
+    <link rel=stylesheet href=/cssrepo/ind/about_style.css>
     <link rel=stylesheet href=/cssrepo/ind/submissions_style.css>
     <style>
         a.fixed {
