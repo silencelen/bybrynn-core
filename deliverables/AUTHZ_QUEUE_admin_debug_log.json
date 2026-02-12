@@ -1,0 +1,110 @@
+{
+  "vulnerabilities": [
+    {
+      "endpoint": "GET /admin_debug.log",
+      "file_path": "/repos/bybrynn-core/admin_debug.log",
+      "verdict": "VULNERABLE",
+      "severity": "CRITICAL",
+      "summary": "Sensitive debug log file with no access controls - exposes session IDs, cookies, OAuth codes, and request data",
+      "details": {
+        "log_location": "/repos/bybrynn-core/admin_debug.log",
+        "what_is_logged": [
+          "Session IDs (session_id())",
+          "All cookies ($_COOKIE array with print_r)",
+          "All GET parameters including OAuth authorization codes ($_GET array)",
+          "Session data ($_SESSION array)",
+          "Timestamps for each entry",
+          "Additional debug messages via logd() function"
+        ],
+        "logged_by": [
+          "/repos/bybrynn-core/submissions.php lines 14-21 (on every request)",
+          "/repos/bybrynn-core/submissions.php lines 84-88 (logd function for additional logging)"
+        ],
+        "guards_found": "NONE",
+        "guards_checked": [
+          ".htaccess file: NOT FOUND",
+          "web.config (IIS): EXISTS but contains NO rules blocking .log files",
+          "Apache/Nginx config files: NOT FOUND in repository",
+          ".htpasswd authentication: NOT FOUND",
+          "PHP authorization checks: NONE - file is written before any auth",
+          "robots.txt: Does not protect files from HTTP access"
+        ],
+        "accessibility": "WEB-ACCESSIBLE - No server configuration blocks .log file access",
+        "file_current_state": "Does not exist yet - will be created on first request to /submissions.php",
+        "gitignore_status": "Listed in .gitignore at line 9, so won't be committed to repository"
+      },
+      "sensitive_data_exposed": [
+        {
+          "data_type": "Session IDs",
+          "logged_at": "submissions.php:16",
+          "code": "date('c') . \" SESSION ID   : \" . session_id() . \"\\n\"",
+          "impact": "Session hijacking - attacker can impersonate authenticated users"
+        },
+        {
+          "data_type": "All Cookies",
+          "logged_at": "submissions.php:17",
+          "code": "date('c') . \" COOKIE ARRAY : \" . print_r($_COOKIE, true) . \"\\n\"",
+          "impact": "Exposes authentication cookies, tracking cookies, and any other cookie data"
+        },
+        {
+          "data_type": "OAuth Authorization Codes",
+          "logged_at": "submissions.php:18",
+          "code": "date('c') . \" GET          : \" . print_r($_GET, true) . \"\\n\"",
+          "impact": "OAuth code parameter can be used to obtain access tokens (lines 50-68 show OAuth flow with $_GET['code'])"
+        },
+        {
+          "data_type": "Session Variables",
+          "logged_at": "submissions.php:19",
+          "code": "date('c') . \" SESS         : \" . print_r($_SESSION, true) . \"\\n\"",
+          "impact": "Exposes oauth2state and any other session data"
+        }
+      ],
+      "attack_scenario": [
+        "1. Attacker navigates to https://bybrynn.com/admin_debug.log",
+        "2. Log file is served by web server (no .htaccess or web.config rules block it)",
+        "3. Attacker reads session IDs from logged data",
+        "4. Attacker uses Cookie header with stolen PHPSESSID to hijack admin session",
+        "5. If OAuth codes are fresh, attacker can exchange them for access tokens (valid 90 seconds per OAuth spec)",
+        "6. Attacker gains full access to submission portal and Microsoft OAuth-protected resources"
+      ],
+      "evidence_of_no_protection": {
+        "web_config_analysis": {
+          "file": "/repos/bybrynn-core/web.config",
+          "content_summary": "Contains mime types, error handlers, URL rewrite rules, but NO rules to block .log file access",
+          "relevant_sections": [
+            "staticContent: Only adds .webp mime type",
+            "httpErrors: Redirects 401/403/404/405 errors",
+            "rewrite: Only rewrites /submissions to submissions.php",
+            "defaultDocument: Sets index.php as default"
+          ],
+          "missing_protection": "No <requestFiltering> or <hiddenSegments> rules to block .log files"
+        },
+        "htaccess_analysis": "File does not exist in /repos/bybrynn-core/",
+        "php_code_analysis": {
+          "logging_happens_at": "Line 14 - BEFORE any authentication or authorization checks",
+          "oauth_flow": "Lines 27-77 implement OAuth but don't protect the log file itself",
+          "no_access_control": "No code checks user permissions before writing to or serving the log file"
+        }
+      },
+      "oauth_code_exposure_details": {
+        "oauth_provider": "Microsoft Azure AD",
+        "tenant_id": "cd47551c-33c7-4b7f-87a9-df19f9169121",
+        "redirect_uri": "https://bybrynn.com/submissions",
+        "scope": "User.Read",
+        "code_logged_at": "submissions.php:18 via print_r($_GET, true)",
+        "code_usage": "Line 67: getAccessToken('authorization_code', ['code' => $_GET['code']])",
+        "token_exposure": "If OAuth code is logged before being exchanged, attacker can race to use it",
+        "timing_window": "Authorization codes typically valid for 60-90 seconds"
+      },
+      "remediation": [
+        "IMMEDIATE: Add .htaccess rule to block .log files: <FilesMatch \"\\.log$\"> Deny from all </FilesMatch>",
+        "IMMEDIATE: Add web.config rule: <requestFiltering><hiddenSegments><add segment=\"*.log\" /></hiddenSegments></requestFiltering>",
+        "IMMEDIATE: Move log file outside web root (e.g., /var/log/ or ../logs/)",
+        "IMMEDIATE: Delete existing admin_debug.log file if it exists",
+        "URGENT: Remove debug logging entirely from production code (lines 14-21, 84-95)",
+        "URGENT: Implement proper error logging with rotation and restricted permissions",
+        "RECOMMENDED: Use PHP error_log() to system log instead of file_put_contents to web-accessible location"
+      ]
+    }
+  ]
+}
