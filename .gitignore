@@ -7,3 +7,6 @@ _notes/
 /node_modules/
 /web.config
 /admin_debug.log
+/env.php
+Thumbs.db
+*.log
