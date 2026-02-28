@@ -62,7 +62,7 @@
         </br></br></br>
         <h1 class=mb0>Brynn Monahan</h1>
         <div class=meta><span>Artist & Creator</span></div>
-        <p>I'm a 23-year-old self taught artist based in Seattle, WA. My main medium is painting (usually with gouache),
+        <p>I'm a <span id="artist-age">23</span>-year-old self taught artist based in Seattle, WA. My main medium is painting (usually with gouache),
             but I love to experiment with other materials from time to time (clay, stamp carving, digital, etc.).
             Currently, the majority of my portfolio is work inspired by media that is important to me. While I will
             always stand by "you are what you love" & wish to reflect that in my pieces; I'm working to move towards
@@ -94,6 +94,9 @@
 
     <script>
         document.getElementById("year").textContent = new Date().getFullYear();
+        var bd = new Date(2001, 7, 11), now = new Date(), age = now.getFullYear() - bd.getFullYear();
+        if (now.getMonth() < bd.getMonth() || (now.getMonth() === bd.getMonth() && now.getDate() < bd.getDate())) age--;
+        document.getElementById("artist-age").textContent = age;
     </script>
     <link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville&display=swap" rel=stylesheet>
     <script src="/jsrepo/fade.js"></script>
