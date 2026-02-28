@@ -160,6 +160,27 @@ figure {
   text-decoration: underline;
 }
 
+/* navigation button style */
+.nav-btn {
+  display: inline-block;
+  padding: 6px 12px;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #212121;
+  text-align: center;
+  text-decoration: none;
+  background-color: #e0e0e0;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  transition: background-color 0.3s;
+}
+.nav-btn:hover,
+.nav-btn:focus {
+  background-color: #d5d5d5;
+  color: #212121;
+}
+
 
 
 
